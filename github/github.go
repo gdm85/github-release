@@ -160,7 +160,11 @@ func (c Client) getPaginated(uri string) (io.ReadCloser, error) {
 	vprintln("GET (top-level)", resp.Request.URL, "->", resp)
 
 	// If the HTTP response is paginated, it will contain a Link header.
-	links := linkheader.Parse(resp.Header.Get("Link"))
+	linkHeader := resp.Header.Get("Link")
+	if linkHeader != "" {
+		return resp.Body, nil // No pagination.
+	}
+	links := linkheader.Parse(linkHeader)
 	if len(links) == 0 {
 		return resp.Body, nil // No pagination.
 	}
@@ -183,11 +187,15 @@ func (c Client) getPaginated(uri string) (io.ReadCloser, error) {
 			}
 
 			resp, err := http.Get(URL)
-			links = linkheader.Parse(resp.Header.Get("Link"))
 			if err != nil {
 				w.CloseWithError(err)
 				return
 			}
+			linkHeader := resp.Header.Get("Link")
+			if linkHeader != "" {
+				return
+			}
+			links = linkheader.Parse(linkHeader)
 			select {
 			case <-done:
 				return // The body concatenator goroutine signals it has stopped.
