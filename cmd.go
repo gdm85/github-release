@@ -482,7 +482,7 @@ func deletecmd(opt Options) error {
 }
 
 func httpDelete(url, token string) (*http.Response, error) {
-	resp, err := DoAuthRequest("DELETE", url, "application/json", token, nil, nil)
+	resp, err := github.DoAuthRequest("DELETE", url, "application/json", token, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -527,8 +527,10 @@ func publishcmd(opt Options) error {
 		return fmt.Errorf("can't encode release edit params, %v", err)
 	}
 
+	apiURL := nvls(EnvApiEndpoint, github.DefaultBaseURL)
 	uri := fmt.Sprintf("/repos/%s/%s/releases/%d", user, repo, release.Id)
-	resp, err := DoAuthRequest("PATCH", ApiURL()+uri, "application/json",
+
+	resp, err := github.DoAuthRequest("PATCH", apiURL+uri, "application/json",
 		token, nil, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("while submitting %v, %v", string(payload), err)
