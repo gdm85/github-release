@@ -1,0 +1,25 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "rhLUtXvcmouYuBwOq9X/nYKzvNg=",
+			"path": "github.com/dustin/go-humanize",
+			"revision": "77ed807830b4df581417e7f89eb81d4872832b72",
+			"revisionTime": "2017-08-28T04:11:59Z"
+		},
+		{
+			"checksumSHA1": "whfG+XT3nzcEVsLzmhUwULNTjGI=",
+			"path": "github.com/tomnomnom/linkheader",
+			"revision": "6c03f819bd09605f1f01b6bfbc452ac1a904dd66",
+			"revisionTime": "2017-05-05T19:44:11Z"
+		},
+		{
+			"checksumSHA1": "rZQEd9X2I+RjTOtQivtIDoc+bXM=",
+			"path": "github.com/voxelbrain/goptions",
+			"revision": "26cb8b04692384f4dc269de3b5fcf3e2ef78573e",
+			"revisionTime": "2015-11-02T23:10:03Z"
+		}
+	],
+	"rootPath": "github.com/aktau/github-release"
+}

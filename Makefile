@@ -69,7 +69,7 @@ release: clean
 dep:
 	go list -f '{{join .Deps "\n"}}' | xargs go list -e -f '{{if not .Standard}}{{.ImportPath}}{{end}}' | xargs go get -u
 
-$(EXECUTABLE): dep
+$(EXECUTABLE):
 	go build -o "$@"
 
 install:
