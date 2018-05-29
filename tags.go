@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/aktau/github-release/github"
+	"github.com/gdm85/github-release/github"
 )
 
 const (

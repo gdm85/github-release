@@ -11,7 +11,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/aktau/github-release/github"
+	"github.com/gdm85/github-release/github"
 )
 
 func infocmd(opt Options) error {
