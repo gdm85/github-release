@@ -1,0 +1,6 @@
+github.com/dustin/go-humanize v0.0.0-20171012181109-77ed807830b4 h1:I4YDfvHXPYd8OWal9f4CgxbqNH2Bbcqk6wuLTy+ieww=
+github.com/dustin/go-humanize v0.0.0-20171012181109-77ed807830b4/go.mod h1:HtrtbFcZ19U5GC7JDqmcUSB87Iq5E25KnS6fMYU6eOk=
+github.com/tomnomnom/linkheader v0.0.0-20170505194411-6c03f819bd09 h1:86q9XG2DvD7H1w5Dmahrr8PcU6hpVppWNvi3gnN/+iA=
+github.com/tomnomnom/linkheader v0.0.0-20170505194411-6c03f819bd09/go.mod h1:iFyPdL66DjUD96XmzVL3ZntbzcflLnznH0fr99w5VqE=
+github.com/voxelbrain/goptions v0.0.0-20151102231003-26cb8b046923 h1:9wj8kG7h9BFfuAGtEgtShrnTNY27UI/v6/RGEpue+LA=
+github.com/voxelbrain/goptions v0.0.0-20151102231003-26cb8b046923/go.mod h1:DGCIhurYgnLz8J9ga1fMV/fbLDyUvTyrWXVWUIyJon4=
