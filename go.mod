@@ -7,3 +7,5 @@ require (
 	github.com/tomnomnom/linkheader v0.0.0-20170505194411-6c03f819bd09
 	github.com/voxelbrain/goptions v0.0.0-20151102231003-26cb8b046923
 )
+
+replace github.com/voxelbrain/goptions => ./vendor/github.com/gdm85/goptions
