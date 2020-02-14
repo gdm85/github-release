@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-
-	"github.com/gdm85/github-release/github"
 )
 
 const (
@@ -20,7 +18,7 @@ const (
 
 type Asset struct {
 	Url         string    `json:"url"`
-	Id          int       `json:"id"`
+	ID          int       `json:"id"`
 	Name        string    `json:"name"`
 	ContentType string    `json:"content_type"`
 	State       string    `json:"state"`
@@ -43,16 +41,16 @@ func findAsset(assets []Asset, name string) *Asset {
 
 // Delete sends a HTTP DELETE request for the given asset to Github. Returns
 // nil if the asset was deleted OR there was nothing to delete.
-func (a *Asset) Delete(user, repo, token string) error {
-	URL := nvls(EnvApiEndpoint, github.DefaultBaseURL) +
-		fmt.Sprintf(ASSET_URI, user, repo, a.Id)
-	resp, err := github.DoAuthRequest("DELETE", URL, "application/json", token, nil, nil)
+func (cmd *CommandParams) Delete(a *Asset) error {
+	URL := cmd.BaseURL +
+		fmt.Sprintf(ASSET_URI, cmd.User, cmd.Repo, a.ID)
+	resp, err := cmd.DoAuthRequest("DELETE", URL, "application/json", nil, nil)
 	if err != nil {
-		return fmt.Errorf("failed to delete asset %s (ID: %d), HTTP error: %b", a.Name, a.Id, err)
+		return fmt.Errorf("failed to delete asset %s (ID: %d), HTTP error: %b", a.Name, a.ID, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("failed to delete asset %s (ID: %d), status: %s", a.Name, a.Id, resp.Status)
+		return fmt.Errorf("failed to delete asset %s (ID: %d), status: %s", a.Name, a.ID, resp.Status)
 	}
 	return nil
 }

@@ -15,22 +15,29 @@ import (
 )
 
 func infocmd(opt Options) error {
-	user := nvls(opt.Info.User, EnvUser)
-	repo := nvls(opt.Info.Repo, EnvRepo)
-	token := nvls(opt.Info.Token, EnvToken)
-	tag := opt.Info.Tag
-
-	if user == "" || repo == "" {
+	cmdopt := opt.Info
+	cmd := CommandParams{
+		Client: github.Client{
+			AuthUser: nvls(cmdopt.AuthUser, EnvAuthUser),
+			Token:    nvls(cmdopt.Token, EnvToken),
+			BaseURL:  nvls(EnvApiEndpoint, github.DefaultBaseURL),
+		},
+		User: nvls(cmdopt.User, EnvUser),
+		Repo: nvls(cmdopt.Repo, EnvRepo),
+	}
+	if cmd.User == "" || cmd.Repo == "" {
 		return fmt.Errorf("user and repo need to be passed as arguments")
 	}
 
+	tag := opt.Info.Tag
+
 	// Find regular git tags.
-	foundTags, err := Tags(user, repo, token)
+	foundTags, err := cmd.Tags()
 	if err != nil {
 		return fmt.Errorf("could not fetch tags, %v", err)
 	}
 	if len(foundTags) == 0 {
-		return fmt.Errorf("no tags available for %v/%v", user, repo)
+		return fmt.Errorf("no tags available for %v/%v", cmd.User, cmd.Repo)
 	}
 
 	tags := foundTags[:0]
@@ -51,15 +58,15 @@ func infocmd(opt Options) error {
 	var releases []Release
 	if tag == "" {
 		// Get all releases.
-		vprintf("%v/%v: getting information for all releases\n", user, repo)
-		releases, err = Releases(user, repo, token)
+		vprintf("%v/%v: getting information for all releases\n", cmd.User, cmd.Repo)
+		releases, err = cmd.Releases()
 		if err != nil {
 			return err
 		}
 	} else {
 		// Get only one release.
-		vprintf("%v/%v/%v: getting information for the release\n", user, repo, tag)
-		release, err := ReleaseOfTag(user, repo, tag, token)
+		vprintf("%v/%v/%v: getting information for the release\n", cmd.User, cmd.Repo, tag)
+		release, err := cmd.ReleaseOfTag(tag)
 		if err != nil {
 			return err
 		}
@@ -98,9 +105,16 @@ func renderInfoJSON(tags []Tag, releases []Release) error {
 }
 
 func uploadcmd(opt Options) error {
-	user := nvls(opt.Upload.User, EnvUser)
-	repo := nvls(opt.Upload.Repo, EnvRepo)
-	token := nvls(opt.Upload.Token, EnvToken)
+	cmdopt := opt.Upload
+	cmd := CommandParams{
+		Client: github.Client{
+			AuthUser: nvls(cmdopt.AuthUser, EnvAuthUser),
+			Token:    nvls(cmdopt.Token, EnvToken),
+			BaseURL:  nvls(EnvApiEndpoint, github.DefaultBaseURL),
+		},
+		User: nvls(cmdopt.User, EnvUser),
+		Repo: nvls(cmdopt.Repo, EnvRepo),
+	}
 	tag := opt.Upload.Tag
 	name := opt.Upload.Name
 	label := opt.Upload.Label
@@ -113,12 +127,12 @@ func uploadcmd(opt Options) error {
 	}
 	defer file.Close()
 
-	if err := ValidateCredentials(user, repo, token, tag); err != nil {
+	if err := cmd.ValidateCredentials(tag); err != nil {
 		return err
 	}
 
 	// Find the release corresponding to the entered tag, if any.
-	rel, err := ReleaseOfTag(user, repo, tag, token)
+	rel, err := cmd.ReleaseOfTag(tag)
 	if err != nil {
 		return err
 	}
@@ -130,7 +144,7 @@ func uploadcmd(opt Options) error {
 	// uploads (which regrettably happen often using the Github API). See
 	// issue #26.
 	var assets []Asset
-	err = github.Client{Token: token, BaseURL: EnvApiEndpoint}.Get(fmt.Sprintf(ASSET_RELEASE_LIST_URI, user, repo, rel.Id), &assets)
+	err = cmd.Get(fmt.Sprintf(ASSET_RELEASE_LIST_URI, cmd.User, cmd.Repo, rel.ID), &assets)
 	if err != nil {
 		return err
 	}
@@ -144,8 +158,8 @@ func uploadcmd(opt Options) error {
 	// 2. The user explicitly asked to delete/replace the asset with -R.
 	if asset := findAsset(assets, name); asset != nil &&
 		(asset.State == "new" || opt.Upload.Replace) {
-		vprintf("asset (id: %d) already existed in state %s: removing...\n", asset.Id, asset.Name)
-		if err := asset.Delete(user, repo, token); err != nil {
+		vprintf("asset (id: %d) already existed in state %s: removing...\n", asset.ID, asset.Name)
+		if err := cmd.Delete(asset); err != nil {
 			return fmt.Errorf("could not replace asset: %v", err)
 		}
 	}
@@ -158,8 +172,8 @@ func uploadcmd(opt Options) error {
 
 	url := rel.CleanUploadUrl() + "?" + v.Encode()
 
-	resp, err := github.DoAuthRequest("POST", url, "application/octet-stream",
-		token, nil, file)
+	resp, err := cmd.DoAuthRequest("POST", url, "application/octet-stream",
+		nil, file)
 	if err != nil {
 		return fmt.Errorf("can't create upload request to %v, %v", url, err)
 	}
@@ -192,9 +206,9 @@ func uploadcmd(opt Options) error {
 		// 502 means the upload failed, but GitHub still retains metadata
 		// (an asset in state "new"). Attempt to delete that now since it
 		// would clutter the list of release assets.
-		vprintf("asset (id: %d) failed to upload, it's now in state %s: removing...\n", asset.Id, asset.Name)
-		if err := asset.Delete(user, repo, token); err != nil {
-			return fmt.Errorf("upload failed (%s), could not delete partially uploaded asset (ID: %d, err: %v) in order to cleanly reset GH API state, please try again", resp.Status, asset.Id, err)
+		vprintf("asset (id: %d) failed to upload, it's now in state %s: removing...\n", asset.ID, asset.Name)
+		if err := cmd.Delete(asset); err != nil {
+			return fmt.Errorf("upload failed (%s), could not delete partially uploaded asset (ID: %d, err: %v) in order to cleanly reset GH API state, please try again", resp.Status, asset.ID, err)
 		}
 		return fmt.Errorf("could not upload, status code (%s)", resp.Status)
 	}
@@ -203,16 +217,24 @@ func uploadcmd(opt Options) error {
 }
 
 func downloadcmd(opt Options) error {
-	user := nvls(opt.Download.User, EnvUser)
-	repo := nvls(opt.Download.Repo, EnvRepo)
-	token := nvls(opt.Download.Token, EnvToken)
+	cmdopt := opt.Download
+	cmd := CommandParams{
+		Client: github.Client{
+			AuthUser: nvls(cmdopt.AuthUser, EnvAuthUser),
+			Token:    nvls(cmdopt.Token, EnvToken),
+			BaseURL:  nvls(EnvApiEndpoint, github.DefaultBaseURL),
+		},
+		User: nvls(cmdopt.User, EnvUser),
+		Repo: nvls(cmdopt.Repo, EnvRepo),
+	}
+
 	tag := opt.Download.Tag
 	name := opt.Download.Name
 	latest := opt.Download.Latest
 
 	vprintln("downloading...")
 
-	if err := ValidateTarget(user, repo, tag, latest); err != nil {
+	if err := cmd.ValidateTarget(tag, latest); err != nil {
 		return err
 	}
 
@@ -220,9 +242,9 @@ func downloadcmd(opt Options) error {
 	var rel *Release
 	var err error
 	if latest {
-		rel, err = LatestRelease(user, repo, token)
+		rel, err = cmd.LatestRelease()
 	} else {
-		rel, err = ReleaseOfTag(user, repo, tag, token)
+		rel, err = cmd.ReleaseOfTag(tag)
 	}
 	if err != nil {
 		return err
@@ -234,12 +256,12 @@ func downloadcmd(opt Options) error {
 	}
 
 	var resp *http.Response
-	if token == "" {
+	if cmd.Token == "" {
 		// Use the regular github.com site if we don't have a token.
-		resp, err = http.Get("https://github.com" + fmt.Sprintf("/%s/%s/releases/download/%s/%s", user, repo, tag, name))
+		resp, err = http.Get("https://github.com" + fmt.Sprintf("/%s/%s/releases/download/%s/%s", cmd.User, cmd.Repo, tag, name))
 	} else {
-		url := nvls(EnvApiEndpoint, github.DefaultBaseURL) + fmt.Sprintf(ASSET_URI, user, repo, asset.Id)
-		resp, err = github.DoAuthRequest("GET", url, "", token, map[string]string{
+		url := cmd.BaseURL + fmt.Sprintf(ASSET_URI, cmd.User, cmd.Repo, asset.ID)
+		resp, err = cmd.DoAuthRequest("GET", url, "", map[string]string{
 			"Accept": "application/octet-stream",
 		}, nil)
 	}
@@ -283,11 +305,11 @@ func mustCopyN(w io.Writer, r io.Reader, n int64) error {
 	return err
 }
 
-func ValidateTarget(user, repo, tag string, latest bool) error {
-	if user == "" {
+func (cmd *CommandParams) ValidateTarget(tag string, latest bool) error {
+	if cmd.User == "" {
 		return fmt.Errorf("empty user")
 	}
-	if repo == "" {
+	if cmd.Repo == "" {
 		return fmt.Errorf("empty repo")
 	}
 	if tag == "" && !latest {
@@ -296,11 +318,11 @@ func ValidateTarget(user, repo, tag string, latest bool) error {
 	return nil
 }
 
-func ValidateCredentials(user, repo, token, tag string) error {
-	if err := ValidateTarget(user, repo, tag, false); err != nil {
+func (cmd *CommandParams) ValidateCredentials(tag string) error {
+	if err := cmd.ValidateTarget(tag, false); err != nil {
 		return err
 	}
-	if token == "" {
+	if cmd.Token == "" {
 		return fmt.Errorf("empty token")
 	}
 	return nil
@@ -308,9 +330,16 @@ func ValidateCredentials(user, repo, token, tag string) error {
 
 func releasecmd(opt Options) error {
 	cmdopt := opt.Release
-	user := nvls(cmdopt.User, EnvUser)
-	repo := nvls(cmdopt.Repo, EnvRepo)
-	token := nvls(cmdopt.Token, EnvToken)
+	cmd := CommandParams{
+		Client: github.Client{
+			AuthUser: nvls(cmdopt.AuthUser, EnvAuthUser),
+			Token:    nvls(cmdopt.Token, EnvToken),
+			BaseURL:  nvls(EnvApiEndpoint, github.DefaultBaseURL),
+		},
+		User: nvls(cmdopt.User, EnvUser),
+		Repo: nvls(cmdopt.Repo, EnvRepo),
+	}
+
 	tag := cmdopt.Tag
 	name := nvls(cmdopt.Name, tag)
 	desc := nvls(cmdopt.Desc, tag)
@@ -320,7 +349,7 @@ func releasecmd(opt Options) error {
 
 	vprintln("releasing...")
 
-	if err := ValidateCredentials(user, repo, token, tag); err != nil {
+	if err := cmd.ValidateCredentials(tag); err != nil {
 		return err
 	}
 
@@ -349,8 +378,8 @@ func releasecmd(opt Options) error {
 	}
 	reader := bytes.NewReader(payload)
 
-	URL := nvls(EnvApiEndpoint, github.DefaultBaseURL) + fmt.Sprintf("/repos/%s/%s/releases", user, repo)
-	resp, err := github.DoAuthRequest("POST", URL, "application/json", token, nil, reader)
+	URL := cmd.BaseURL + fmt.Sprintf("/repos/%s/%s/releases", cmd.User, cmd.Repo)
+	resp, err := cmd.DoAuthRequest("POST", URL, "application/json", nil, reader)
 	if err != nil {
 		return fmt.Errorf("while submitting %v, %v", string(payload), err)
 	}
@@ -378,9 +407,16 @@ func releasecmd(opt Options) error {
 
 func editcmd(opt Options) error {
 	cmdopt := opt.Edit
-	user := nvls(cmdopt.User, EnvUser)
-	repo := nvls(cmdopt.Repo, EnvRepo)
-	token := nvls(cmdopt.Token, EnvToken)
+	cmd := CommandParams{
+		Client: github.Client{
+			AuthUser: nvls(cmdopt.AuthUser, EnvAuthUser),
+			Token:    nvls(cmdopt.Token, EnvToken),
+			BaseURL:  nvls(EnvApiEndpoint, github.DefaultBaseURL),
+		},
+		User: nvls(cmdopt.User, EnvUser),
+		Repo: nvls(cmdopt.Repo, EnvRepo),
+	}
+
 	tag := cmdopt.Tag
 	name := nvls(cmdopt.Name, tag)
 	desc := nvls(cmdopt.Desc, tag)
@@ -389,11 +425,11 @@ func editcmd(opt Options) error {
 
 	vprintln("editing...")
 
-	if err := ValidateCredentials(user, repo, token, tag); err != nil {
+	if err := cmd.ValidateCredentials(tag); err != nil {
 		return err
 	}
 
-	id, err := IdOfTag(user, repo, tag, token)
+	id, err := cmd.IDOfTag(tag)
 	if err != nil {
 		return err
 	}
@@ -424,8 +460,8 @@ func editcmd(opt Options) error {
 		return fmt.Errorf("can't encode release creation params, %v", err)
 	}
 
-	URL := nvls(EnvApiEndpoint, github.DefaultBaseURL) + fmt.Sprintf("/repos/%s/%s/releases/%d", user, repo, id)
-	resp, err := github.DoAuthRequest("PATCH", URL, "application/json", token, nil, bytes.NewReader(payload))
+	URL := cmd.BaseURL + fmt.Sprintf("/repos/%s/%s/releases/%d", cmd.User, cmd.Repo, id)
+	resp, err := cmd.DoAuthRequest("PATCH", URL, "application/json", nil, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("while submitting %v, %v", string(payload), err)
 	}
@@ -452,22 +488,30 @@ func editcmd(opt Options) error {
 }
 
 func deletecmd(opt Options) error {
-	user, repo, token, tag := nvls(opt.Delete.User, EnvUser),
-		nvls(opt.Delete.Repo, EnvRepo),
-		nvls(opt.Delete.Token, EnvToken),
-		opt.Delete.Tag
+	cmdopt := opt.Delete
+	cmd := CommandParams{
+		Client: github.Client{
+			AuthUser: nvls(cmdopt.AuthUser, EnvAuthUser),
+			Token:    nvls(cmdopt.Token, EnvToken),
+			BaseURL:  nvls(EnvApiEndpoint, github.DefaultBaseURL),
+		},
+		User: nvls(cmdopt.User, EnvUser),
+		Repo: nvls(cmdopt.Repo, EnvRepo),
+	}
+
+	tag := opt.Delete.Tag
+
 	vprintln("deleting...")
 
-	id, err := IdOfTag(user, repo, tag, token)
+	id, err := cmd.IDOfTag(tag)
 	if err != nil {
 		return err
 	}
 
 	vprintf("release %v has id %v\n", tag, id)
 
-	baseURL := nvls(EnvApiEndpoint, github.DefaultBaseURL)
-	resp, err := github.DoAuthRequest("DELETE", baseURL+fmt.Sprintf("/repos/%s/%s/releases/%d",
-		user, repo, id), "application/json", token, nil, nil)
+	resp, err := cmd.DoAuthRequest("DELETE", cmd.BaseURL+fmt.Sprintf("/repos/%s/%s/releases/%d",
+		cmd.User, cmd.Repo, id), "application/json", nil, nil)
 	if err != nil {
 		return fmt.Errorf("release deletion failed: %v", err)
 	}
@@ -475,42 +519,40 @@ func deletecmd(opt Options) error {
 
 	if resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("could not delete the release corresponding to tag %s on repo %s/%s",
-			tag, user, repo)
+			tag, cmd.User, cmd.Repo)
 	}
 
 	return nil
 }
 
-func httpDelete(url, token string) (*http.Response, error) {
-	resp, err := github.DoAuthRequest("DELETE", url, "application/json", token, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return resp, nil
-}
-
 func publishcmd(opt Options) error {
 	cmdopt := opt.Publish
-	user := nvls(cmdopt.User, EnvUser)
-	repo := nvls(cmdopt.Repo, EnvRepo)
-	token := nvls(cmdopt.Token, EnvToken)
+	cmd := CommandParams{
+		Client: github.Client{
+			AuthUser: nvls(cmdopt.AuthUser, EnvAuthUser),
+			Token:    nvls(cmdopt.Token, EnvToken),
+			BaseURL:  nvls(EnvApiEndpoint, github.DefaultBaseURL),
+		},
+		User: nvls(cmdopt.User, EnvUser),
+		Repo: nvls(cmdopt.Repo, EnvRepo),
+	}
+
 	tag := cmdopt.Tag
 
 	vprintln("publishing...")
 
-	if err := ValidateCredentials(user, repo, token, tag); err != nil {
+	if err := cmd.ValidateCredentials(tag); err != nil {
 		return err
 	}
 
 	/* look up the release */
-	vprintf("%v/%v/%v: getting information for the release\n", user, repo, tag)
-	release, err := ReleaseOfTag(user, repo, tag, token)
+	vprintf("%v/%v/%v: getting information for the release\n", cmd.User, cmd.Repo, tag)
+	release, err := cmd.ReleaseOfTag(tag)
 	if err != nil {
 		return err
 	}
 
-	vprintf("release %v has id %v\n", tag, release.Id)
+	vprintf("release %v has id %v\n", tag, release.ID)
 
 	/* the release create struct works for editing releases as well */
 	params := ReleaseCreate{
@@ -527,11 +569,10 @@ func publishcmd(opt Options) error {
 		return fmt.Errorf("can't encode release edit params, %v", err)
 	}
 
-	apiURL := nvls(EnvApiEndpoint, github.DefaultBaseURL)
-	uri := fmt.Sprintf("/repos/%s/%s/releases/%d", user, repo, release.Id)
+	url := cmd.BaseURL + fmt.Sprintf("/repos/%s/%s/releases/%d", cmd.User, cmd.Repo, release.ID)
 
-	resp, err := github.DoAuthRequest("PATCH", apiURL+uri, "application/json",
-		token, nil, bytes.NewReader(payload))
+	resp, err := cmd.DoAuthRequest("PATCH", url, "application/json",
+		nil, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("while submitting %v, %v", string(payload), err)
 	}

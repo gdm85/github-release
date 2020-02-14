@@ -23,8 +23,8 @@ var VERBOSITY = 0
 //
 // TODO: This function is amazingly ugly (separate headers, token, no API
 // URL constructions, et cetera).
-func DoAuthRequest(method, url, mime, token string, headers map[string]string, body io.Reader) (*http.Response, error) {
-	req, err := newAuthRequest(method, url, mime, token, headers, body)
+func (c *Client) DoAuthRequest(method, url, mime string, headers map[string]string, body io.Reader) (*http.Response, error) {
+	req, err := c.newAuthRequest(method, url, mime, headers, body)
 	if err != nil {
 		return nil, err
 	}
@@ -41,13 +41,17 @@ func DoAuthRequest(method, url, mime, token string, headers map[string]string, b
 // API, such as authorization tokens. Methods called on Client will supply
 // these options when calling the API.
 type Client struct {
-	Token   string // Github API token, used when set.
-	BaseURL string // Github API URL, defaults to DefaultBaseURL if unset.
+	// AuthUser is the GitHub user which is authenticating.
+	AuthUser string
+	// Token is the GitHub API token, used when set.
+	Token string
+	// BaseURL is the GitHub API URL, defaults to DefaultBaseURL if unset.
+	BaseURL string
 }
 
 // Get fetches uri (relative URL) from the GitHub API and unmarshals the
 // response into v. It takes care of pagination transparantly.
-func (c Client) Get(uri string, v interface{}) error {
+func (c *Client) Get(uri string, v interface{}) error {
 	if c.BaseURL == "" {
 		c.BaseURL = DefaultBaseURL
 	}
@@ -135,7 +139,7 @@ func (c Client) Get(uri string, v interface{}) error {
 //
 // TODO: Rework the API so we can cleanly append per_page=100 as a URL
 // parameter.
-func (c Client) getPaginated(uri string) (io.ReadCloser, error) {
+func (c *Client) getPaginated(uri string) (io.ReadCloser, error) {
 	// Parse the passed-in URI to make sure we don't lose any values when
 	// setting our own params.
 	u, err := url.Parse(c.BaseURL + uri)
@@ -145,11 +149,17 @@ func (c Client) getPaginated(uri string) (io.ReadCloser, error) {
 
 	v := u.Query()
 	v.Set("per_page", "100") // The default is 30, this makes it less likely for Github to rate-limit us.
-	if c.Token != "" {
-		v.Set("access_token", c.Token)
-	}
 	u.RawQuery = v.Encode()
-	resp, err := http.Get(u.String())
+
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	if c.Token != "" {
+		req.SetBasicAuth(c.AuthUser, c.Token)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +196,16 @@ func (c Client) getPaginated(uri string) (io.ReadCloser, error) {
 				return // We're done.
 			}
 
-			resp, err := http.Get(URL)
+			req, err := http.NewRequest("GET", URL, nil)
+			if err != nil {
+				w.CloseWithError(err)
+				return
+			}
+			if c.Token != "" {
+				req.SetBasicAuth(c.AuthUser, c.Token)
+			}
+
+			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				w.CloseWithError(err)
 				return
@@ -236,8 +255,8 @@ func (c Client) getPaginated(uri string) (io.ReadCloser, error) {
 }
 
 // Create a new request that sends the auth token.
-func newAuthRequest(method, url, mime, token string, headers map[string]string, body io.Reader) (*http.Request, error) {
-	vprintln("creating request:", method, url, mime, token)
+func (c *Client) newAuthRequest(method, url, mime string, headers map[string]string, body io.Reader) (*http.Request, error) {
+	vprintln("creating request:", method, url, mime)
 
 	var n int64 // content length
 	var err error
@@ -265,7 +284,10 @@ func newAuthRequest(method, url, mime, token string, headers map[string]string, 
 	if mime != "" {
 		req.Header.Set("Content-Type", mime)
 	}
-	req.Header.Set("Authorization", "token "+token)
+
+	if c.Token != "" {
+		req.SetBasicAuth(c.AuthUser, c.Token)
+	}
 
 	for k, v := range headers {
 		req.Header.Set(k, v)

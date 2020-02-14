@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gdm85/github-release/github"
 	"github.com/dustin/go-humanize"
 )
 
@@ -19,7 +18,7 @@ type Release struct {
 	Url         string     `json:"url"`
 	PageUrl     string     `json:"html_url"`
 	UploadUrl   string     `json:"upload_url"`
-	Id          int        `json:"id"`
+	ID          int        `json:"id"`
 	Name        string     `json:"name"`
 	Description string     `json:"body"`
 	TagName     string     `json:"tag_name"`
@@ -44,7 +43,7 @@ func (r *Release) String() string {
 	str := make([]string, len(r.Assets)+1)
 	str[0] = fmt.Sprintf(
 		"%s, name: '%s', description: '%s', id: %d, tagged: %s, published: %s, draft: %v, prerelease: %v",
-		r.TagName, r.Name, r.Description, r.Id,
+		r.TagName, r.Name, r.Description, r.ID,
 		timeFmtOr(r.Created, RELEASE_DATE_FORMAT, ""),
 		timeFmtOr(r.Published, RELEASE_DATE_FORMAT, ""),
 		Mark(r.Draft), Mark(r.Prerelease))
@@ -52,7 +51,7 @@ func (r *Release) String() string {
 	for idx, asset := range r.Assets {
 		str[idx+1] = fmt.Sprintf("  - artifact: %s, downloads: %d, state: %s, type: %s, size: %s, id: %d",
 			asset.Name, asset.Downloads, asset.State, asset.ContentType,
-			humanize.Bytes(asset.Size), asset.Id)
+			humanize.Bytes(asset.Size), asset.ID)
 	}
 
 	return strings.Join(str, "\n")
@@ -67,9 +66,9 @@ type ReleaseCreate struct {
 	Prerelease      bool   `json:"prerelease"`
 }
 
-func Releases(user, repo, token string) ([]Release, error) {
+func (cmd *CommandParams) Releases() ([]Release, error) {
 	var releases []Release
-	err := github.Client{Token: token, BaseURL: EnvApiEndpoint}.Get(fmt.Sprintf(RELEASE_LIST_URI, user, repo), &releases)
+	err := cmd.Get(fmt.Sprintf(RELEASE_LIST_URI, cmd.User, cmd.Repo), &releases)
 	if err != nil {
 		return nil, err
 	}
@@ -77,20 +76,20 @@ func Releases(user, repo, token string) ([]Release, error) {
 	return releases, nil
 }
 
-func latestReleaseApi(user, repo, token string) (*Release, error) {
+func (cmd *CommandParams) latestReleaseApi() (*Release, error) {
 	var release Release
-	return &release, github.Client{Token: token, BaseURL: EnvApiEndpoint}.Get(fmt.Sprintf(RELEASE_LATEST_URI, user, repo), &release)
+	return &release, cmd.Get(fmt.Sprintf(RELEASE_LATEST_URI, cmd.User, cmd.Repo), &release)
 }
 
-func LatestRelease(user, repo, token string) (*Release, error) {
+func (cmd *CommandParams) LatestRelease() (*Release, error) {
 	// If latestReleaseApi DOESN'T give an error, return the release.
-	if latestRelease, err := latestReleaseApi(user, repo, token); err == nil {
+	if latestRelease, err := cmd.latestReleaseApi(); err == nil {
 		return latestRelease, nil
 	}
 
-	// The enterprise api doesnt support the latest release endpoint. Get
+	// The enterprise api does not support the latest release endpoint. Get
 	// all releases and compare the published date to get the latest.
-	releases, err := Releases(user, repo, token)
+	releases, err := cmd.Releases()
 	if err != nil {
 		return nil, err
 	}
@@ -111,8 +110,8 @@ func LatestRelease(user, repo, token string) (*Release, error) {
 	return &releases[latestRelIndex], nil
 }
 
-func ReleaseOfTag(user, repo, tag, token string) (*Release, error) {
-	releases, err := Releases(user, repo, token)
+func (cmd *CommandParams) ReleaseOfTag(tag string) (*Release, error) {
+	releases, err := cmd.Releases()
 	if err != nil {
 		return nil, err
 	}
@@ -126,12 +125,12 @@ func ReleaseOfTag(user, repo, tag, token string) (*Release, error) {
 	return nil, fmt.Errorf("could not find the release corresponding to tag %s", tag)
 }
 
-/* find the release-id of the specified tag */
-func IdOfTag(user, repo, tag, token string) (int, error) {
-	release, err := ReleaseOfTag(user, repo, tag, token)
+// IDOfTag finds the release-id of the specified tag.
+func (cmd *CommandParams) IDOfTag(tag string) (int, error) {
+	release, err := cmd.ReleaseOfTag(tag)
 	if err != nil {
 		return 0, err
 	}
 
-	return release.Id, nil
+	return release.ID, nil
 }

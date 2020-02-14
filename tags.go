@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-
-	"github.com/gdm85/github-release/github"
 )
 
 const (
@@ -21,8 +19,8 @@ func (t *Tag) String() string {
 	return t.Name + " (commit: " + t.Commit.Url + ")"
 }
 
-// Get the tags associated with a repo.
-func Tags(user, repo, token string) ([]Tag, error) {
+// Tags gets the tags associated with a repository.
+func (cmd *CommandParams) Tags() ([]Tag, error) {
 	var tags []Tag
-	return tags, github.Client{Token: token, BaseURL: EnvApiEndpoint}.Get(fmt.Sprintf(TAGS_URI, user, repo), &tags)
+	return tags, cmd.Get(fmt.Sprintf(TAGS_URI, cmd.User, cmd.Repo), &tags)
 }
